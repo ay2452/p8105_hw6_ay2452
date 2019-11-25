@@ -1,0 +1,12 @@
+---
+title: "p8105_hw6_ay2452"
+author: "Alicia Yang"
+date: "11/25/2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(viridis)
+library(modelr)
+```
