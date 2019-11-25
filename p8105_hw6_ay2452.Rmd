@@ -47,3 +47,108 @@ birthweight %>%
   facet_grid(~model)
 ```
 ## Gestational age and mother's age at delivery were chosen after reading scientific papers looking at risk factors for low birth weight babies. Baby's length at birth was also included since there should be a relationship between baby size and baby weight. Variables were all found to be significantly associated with birthweight. This model does not appear to be appropriate; linearity is violated.
+
+
+```{r {Problem 1.3}
+main_effect = lm(bwt ~ blength + gaweeks, data = birthweight)
+
+main_effect %>%
+  broom::tidy() %>%
+  select(term, estimate, p.value) %>%
+  knitr::kable(digits = 5)
+
+birthweight %>% 
+  modelr::add_residuals(main_effect) %>%
+  modelr::add_predictions(main_effect) %>%
+  ggplot(aes(x = pred, y = resid)) + geom_point()
+
+
+interaction = lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex, data = birthweight )
+
+interaction %>%
+  broom::tidy() %>%
+  select(term, estimate, p.value) %>%
+  knitr::kable(digits = 5)
+
+birthweight %>% 
+  modelr::add_residuals(interaction) %>%
+  modelr::add_predictions(interaction) %>%
+  ggplot(aes(x = pred, y = resid)) + geom_point()
+
+birthweight %>% 
+  modelr::add_residuals(interaction) %>%
+  modelr::add_predictions(interaction) %>%
+  modelr::add_residuals(main_effect) %>%
+  modelr::add_predictions(main_effect) %>%
+  modelr::add_residuals(proposed) %>%
+  modelr::add_predictions(proposed) %>%
+  gather_predictions(proposed, main_effect, interaction) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point(alpha = .5) +
+  geom_smooth(aes(y = resid), color = "red") + 
+  facet_grid(~model)
+
+cv_df =
+  crossv_mc(birthweight, 100) %>%
+  mutate(proposed = map(train, ~lm(bwt ~ momage + gaweeks + blength, data = birthweight)), 
+         main_effect = map(train, ~lm(bwt ~ blength + gaweeks, data = birthweight)), 
+         interaction = map(train, ~lm(bwt ~ bhead*blength + bhead*babysex + blength*babysex +
+                                            bhead*blength*babysex, data = birthweight))) %>%
+  mutate(rmse_proposed = map2_dbl(proposed, test, ~rmse(model = .x, data = .y)), 
+         rmse_main_effect = map2_dbl(main_effect, test, ~rmse(model = .x, data = .y)), 
+         rmse_interaction = map2_dbl(interaction, test, ~rmse(model = .x, data = .y)))
+
+cv_df %>% 
+  select(starts_with("rmse")) %>%
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse") %>%
+  mutate(model = fct_inorder(model)) %>%
+  ggplot(aes(x= model, y = rmse)) + geom_violin()
+```
+##The plot of model vs rmse shows that the interaction model may have the best predictive accuracy among the three proposed models. The proposed model may be slightly better than the main_effect model but not much better. 
+
+```{r Problem 2.1}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+
+weather_df2 = 
+  weather_df %>%
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x) ),
+    results = map(models, broom::tidy), 
+    results2 = map(models, broom::glance)) %>%
+  select(-strap, -models) %>% 
+  unnest(results) %>% 
+  select(-p.value) %>%
+  rename(statistic1 = statistic) %>%
+  unnest(results2) %>%
+  select(-p.value) %>%
+  pivot_wider(
+    names_from = term, 
+    values_from = estimate
+  ) %>%
+  mutate(
+    logb1b2 = log(`(Intercept)`*tmin)
+  ) 
+
+weather_df2 %>%
+  ggplot(aes(x = r.squared)) + geom_density()
+
+
+weather_df2 %>%
+  ggplot(aes(x = logb1b2)) + geom_density()  
+```
+##The graph for r.squared vs density has a tail and shoulder and ranges from about 0.891 to 0.927, indicating the frequency of outliers in the bootstrap sample. The "shoulder" peaks at around 0.912. 
